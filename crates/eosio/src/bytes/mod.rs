@@ -1,5 +1,6 @@
 //! TODO docs
 mod alloc;
+mod collections;
 mod data_stream;
 mod marker;
 mod num;
@@ -9,6 +10,7 @@ mod primitives;
 pub use self::data_stream::DataStream;
 pub use eosio_macros::{NumBytes, Read, Write};
 
+use ::alloc::{vec, vec::Vec};
 use core::fmt;
 
 /// Count the number of bytes a type is expected to use.
@@ -18,9 +20,22 @@ pub trait NumBytes {
 }
 
 /// Read bytes.
-pub trait Read: Sized {
+pub trait Read: Sized + NumBytes {
     /// Read bytes.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if there was a problem reading the data.
     fn read(bytes: &[u8], pos: &mut usize) -> Result<Self, ReadError>;
+
+    /// Deserializes a byte array into a data type.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if there was a problem reading the data.
+    fn unpack<T: AsRef<[u8]>>(bytes: T) -> Result<Self, ReadError> {
+        Self::read(bytes.as_ref(), &mut 0)
+    }
 }
 
 /// Error that can be returned when reading bytes.
@@ -40,13 +55,29 @@ impl fmt::Display for ReadError {
 }
 
 /// Write bytes.
-pub trait Write: Sized {
+pub trait Write: Sized + NumBytes {
     /// Write bytes.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if there was a problem writing the data.
     fn write(
         &self,
         bytes: &mut [u8],
         pos: &mut usize,
     ) -> Result<(), WriteError>;
+
+    /// Serializes data into a byte vector.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if there was a problem writing the data.
+    fn pack(&self) -> Result<Vec<u8>, WriteError> {
+        let num_bytes = self.num_bytes();
+        let mut bytes = vec![0_u8; num_bytes];
+        self.write(&mut bytes, &mut 0)?;
+        Ok(bytes)
+    }
 }
 
 /// Error that can be returned when writing bytes.
@@ -70,9 +101,11 @@ impl fmt::Display for WriteError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ::alloc::string::{String, ToString};
-    use ::alloc::vec::Vec;
+    use super::{vec, NumBytes, Read, Write};
+    use ::alloc::{
+        string::{String, ToString},
+        vec::Vec,
+    };
 
     macro_rules! test_type {
         ($($i:ident, $t:ty, $e:expr)*) => ($(
@@ -93,6 +126,10 @@ mod tests {
 
                 assert_eq!($e, result);
                 assert_eq!(write_pos, read_pos);
+
+                let packed = thing.pack().unwrap();
+                let unpacked = <$t as Read>::unpack(packed).unwrap();
+                assert_eq!(unpacked, thing);
             }
         )*)
     }

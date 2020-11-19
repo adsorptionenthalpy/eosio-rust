@@ -7,9 +7,9 @@ pub struct Account {
 }
 
 impl Table for Account {
-    const NAME: TableName = TableName::new(n!(accounts));
-
     type Row = Self;
+
+    const NAME: TableName = TableName::new(n!("accounts"));
 
     fn primary_key(row: &Self::Row) -> u64 {
         row.balance.symbol.code().as_u64()
@@ -24,9 +24,9 @@ pub struct CurrencyStats {
 }
 
 impl Table for CurrencyStats {
-    const NAME: TableName = TableName::new(n!(stat));
-
     type Row = Self;
+
+    const NAME: TableName = TableName::new(n!("stat"));
 
     fn primary_key(row: &Self::Row) -> u64 {
         row.supply.symbol.code().as_u64()
@@ -56,7 +56,7 @@ fn create(issuer: AccountName, max_supply: Asset) {
         issuer,
     };
 
-    stats_table.emplace(code, &stats).expect("write");
+    stats_table.emplace(code, stats).expect("write");
 }
 
 #[eosio::action]
@@ -75,7 +75,7 @@ fn issue(to: AccountName, quantity: Asset, memo: String) {
     let mut st = cursor.get().expect("read");
     assert!(
         to == st.issuer,
-        "tokens can only be issued to issuer account"
+        "tokens can only be issued to issuer account",
     );
     require_auth(st.issuer);
     assert!(quantity.is_valid(), "invalid quantity");
@@ -90,7 +90,7 @@ fn issue(to: AccountName, quantity: Asset, memo: String) {
     );
 
     st.supply += quantity;
-    cursor.modify(None, &st).expect("write");
+    cursor.modify(Payer::Same, st).expect("write");
 
     add_balance(st.issuer, quantity, st.issuer);
 
@@ -101,13 +101,12 @@ fn issue(to: AccountName, quantity: Asset, memo: String) {
             quantity,
             memo,
         };
-        send_inline_action(&action.to_action(
-            current_receiver(),
-            vec![PermissionLevel {
+        send_inline_action(&action.to_action(current_receiver(), vec![
+            PermissionLevel {
                 actor: st.issuer,
-                permission: n!(active).into(),
-            }],
-        ))
+                permission: n!("active").into(),
+            },
+        ]))
         .expect("failed to send inline action");
     }
 }
@@ -132,7 +131,7 @@ fn retire(quantity: Asset, memo: String) {
     assert!(symbol == st.supply.symbol, "symbol precision mismatch");
 
     st.supply -= quantity;
-    cursor.modify(None, &st).expect("write");
+    cursor.modify(Payer::Same, st).expect("write");
     sub_balance(st.issuer, quantity);
 }
 
@@ -177,7 +176,7 @@ fn sub_balance(owner: AccountName, value: Asset) {
     assert!(from.balance.amount >= value.amount, "overdrawn balance");
 
     from.balance -= value;
-    cursor.modify(None, &from).expect("write");
+    cursor.modify(Payer::Same, from).expect("write");
 }
 
 fn add_balance(owner: AccountName, value: Asset, ram_payer: AccountName) {
@@ -188,7 +187,9 @@ fn add_balance(owner: AccountName, value: Asset, ram_payer: AccountName) {
         Some(cursor) => {
             let mut account = cursor.get().expect("read");
             account.balance += value;
-            cursor.modify(Some(ram_payer), &account).expect("write");
+            cursor
+                .modify(Payer::New(ram_payer), &account)
+                .expect("write");
         }
         None => {
             let account = Account { balance: value };
@@ -218,7 +219,7 @@ fn open(owner: AccountName, symbol: Symbol, ram_payer: AccountName) {
         let account = Account {
             balance: Asset { amount: 0, symbol },
         };
-        accts_table.emplace(ram_payer, &account).expect("write");
+        accts_table.emplace(ram_payer, account).expect("write");
     }
 }
 
@@ -227,9 +228,10 @@ fn close(owner: AccountName, symbol: Symbol) {
     require_auth(owner);
     let code = current_receiver();
     let accts_table = Account::table(code, owner);
-    let accts_cursor = accts_table
-        .find(symbol.code())
-        .expect("Balance row already deleted or never existed. Action won't have any effect.");
+    let accts_cursor = accts_table.find(symbol.code()).expect(
+        "Balance row already deleted or never existed. Action won't have any \
+         effect.",
+    );
     let account = accts_cursor.get().expect("read");
     assert!(
         account.balance.amount == 0,
@@ -238,4 +240,4 @@ fn close(owner: AccountName, symbol: Symbol) {
     accts_cursor.erase().expect("read");
 }
 
-eosio_cdt::abi!(create, issue, transfer, open, close, retire);
+eosio::abi!(create, issue, transfer, open, close, retire);

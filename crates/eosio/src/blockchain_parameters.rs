@@ -6,16 +6,14 @@ use alloc::string::String;
 #[derive(
     Read, Write, NumBytes, Clone, Default, Debug, PartialEq, PartialOrd,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
+#[eosio(crate_path = "crate::bytes")]
 pub struct ChainId(String);
 
 /// Tunable blockchain configuration that can be changed via consensus
 #[derive(
     Read, Write, NumBytes, Clone, Default, Debug, PartialEq, PartialOrd,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
+#[eosio(crate_path = "crate::bytes")]
 pub struct BlockchainParameters {
     /// The maximum net usage in instructions for a block
     pub max_block_net_usage: u64,
@@ -61,4 +59,10 @@ pub struct BlockchainParameters {
     pub max_inline_action_depth: u16,
     /// Maximum authority depth
     pub max_authority_depth: u16,
+}
+
+impl AsRef<BlockchainParameters> for BlockchainParameters {
+    fn as_ref(&self) -> &Self {
+        self
+    }
 }

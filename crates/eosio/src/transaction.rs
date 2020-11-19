@@ -1,8 +1,10 @@
 //! TODO docs
-use crate::action::Action;
-use crate::bytes::{NumBytes, Read, Write};
-use crate::time::TimePointSec;
-use crate::varint::UnsignedInt;
+use crate::{
+    action::Action,
+    bytes::{NumBytes, Read, Write},
+    time::TimePointSec,
+    varint::UnsignedInt,
+};
 use alloc::vec::Vec;
 
 /// TODO docs
@@ -19,8 +21,7 @@ use alloc::vec::Vec;
     Hash,
     Default,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
+#[eosio(crate_path = "crate::bytes")]
 pub struct TransactionExtension(u16, Vec<char>);
 
 /// TODO docs
@@ -37,8 +38,7 @@ pub struct TransactionExtension(u16, Vec<char>);
     Hash,
     Default,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
+#[eosio(crate_path = "crate::bytes")]
 pub struct TransactionHeader {
     /// TODO docs
     pub expiration: TimePointSec,
@@ -46,7 +46,8 @@ pub struct TransactionHeader {
     pub ref_block_num: u16,
     /// TODO docs
     pub ref_block_prefix: u32,
-    /// number of 8 byte words this transaction can serialize into after compressions
+    /// number of 8 byte words this transaction can serialize into after
+    /// compressions
     pub max_net_usage_words: UnsignedInt,
     /// number of CPU usage units to bill transaction for
     pub max_cpu_usage_ms: u8,
@@ -56,9 +57,8 @@ pub struct TransactionHeader {
 
 /// TODO docs
 #[derive(Clone, Debug, Read, Write, NumBytes, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
-pub struct Transaction<T: Default + Clone> {
+#[eosio(crate_path = "crate::bytes")]
+pub struct Transaction<T: Default + Clone = Vec<u8>> {
     /// TODO docs
     pub header: TransactionHeader,
     /// TODO docs
@@ -86,5 +86,11 @@ impl From<u128> for TransactionId {
     #[must_use]
     fn from(value: u128) -> Self {
         Self(value)
+    }
+}
+
+impl AsRef<TransactionId> for TransactionId {
+    fn as_ref(&self) -> &Self {
+        self
     }
 }

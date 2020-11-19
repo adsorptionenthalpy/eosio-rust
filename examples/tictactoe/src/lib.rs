@@ -10,10 +10,10 @@ const HOST: u8 = 1;
 const CHALLENGER: u8 = 2;
 const DRAW: u8 = 3;
 
-#[eosio::table(game)]
+#[eosio::table("game")]
 struct Game {
     host: AccountName,
-    #[primary]
+    #[eosio(primary_key)]
     challenger: AccountName,
     turn: u8,
     winner: u8,
@@ -36,7 +36,7 @@ fn create(host: AccountName, challenger: AccountName) {
 
     let game = Game::new(host, challenger);
 
-    table.emplace(host, &game).expect("write");
+    table.emplace(host, game).expect("write");
 }
 
 #[eosio::action]
@@ -54,7 +54,7 @@ fn restart(host: AccountName, challenger: AccountName, by: u8) {
 
     game.restart();
 
-    cursor.modify(None, &game).expect("write");
+    cursor.modify(Payer::Same, game).expect("write");
 }
 
 #[eosio::action]
@@ -68,8 +68,8 @@ fn close(host: AccountName, challenger: AccountName) {
     cursor.erase().expect("read");
 }
 
-#[eosio::action]
-fn makemove(
+#[eosio::action("makemove")]
+fn make_move(
     host: AccountName,
     challenger: AccountName,
     by: u8,
@@ -99,10 +99,10 @@ fn makemove(
     assert!(game.is_valid_move(row, col), "not a valid movement!");
 
     game.make_move(row, col);
-    cursor.modify(None, &game).expect("write");
+    cursor.modify(Payer::Same, game).expect("write");
 }
 
-eosio_cdt::abi!(create, restart, close, makemove);
+eosio::abi!(create, restart, close, make_move);
 
 impl Game {
     fn new(host: AccountName, challenger: AccountName) -> Self {
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_is_valid_move() {
-        let mut game = Game::new(n!(player1).into(), n!(player2).into());
+        let mut game = Game::new(n!("player1").into(), n!("player2").into());
         assert_eq!(game.is_valid_move(0, 0), true);
         assert_eq!(game.is_valid_move(1, 1), true);
         assert_eq!(game.is_valid_move(2, 2), true);
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_make_move() {
-        let mut game = Game::new(n!(player1).into(), n!(player2).into());
+        let mut game = Game::new(n!("player1").into(), n!("player2").into());
         assert_eq!(game.board[0], EMPTY);
         game.make_move(0, 0);
         assert_eq!(game.board[0], HOST);
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_get_winner() {
-        let mut game = Game::new(n!(player1).into(), n!(player2).into());
+        let mut game = Game::new(n!("player1").into(), n!("player2").into());
         assert_eq!(game.winner, EMPTY);
         game.make_move(0, 0);
         assert_eq!(game.winner, EMPTY);
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_restart() {
-        let mut game = Game::new(n!(player1).into(), n!(player2).into());
+        let mut game = Game::new(n!("player1").into(), n!("player2").into());
         assert_eq!(game.winner, EMPTY);
         game.make_move(0, 0);
         assert_eq!(game.winner, EMPTY);

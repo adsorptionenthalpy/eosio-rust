@@ -1,14 +1,19 @@
 use crate::{
-    NativeSecondaryKey, Print, TableCursor, TableIndex, TableIterator,
+    NativeSecondaryKey, Payer, Print, TableCursor, TableIndex, TableIterator,
 };
-use core::iter::IntoIterator;
-use core::marker::PhantomData;
-use core::ptr::null_mut;
+use alloc::vec::Vec;
+use core::{
+    borrow::Borrow, iter::IntoIterator, marker::PhantomData, ptr::null_mut,
+};
 use eosio::{
-    AccountName, NumBytes, PrimaryTableIndex, Read, ReadError, ScopeName,
+    AccountName, NumBytes, PrimaryTableIndex, ReadError, ScopeName,
     SecondaryKey, SecondaryTableName, Table, Write, WriteError,
 };
-use eosio_cdt_sys::*;
+use eosio_cdt_sys::{
+    c_void, db_end_i64, db_find_i64, db_get_i64, db_lowerbound_i64,
+    db_next_i64, db_previous_i64, db_remove_i64, db_store_i64, db_update_i64,
+    db_upperbound_i64,
+};
 
 /// Cursor for a primary table index
 #[allow(clippy::missing_inline_in_public_items)]
@@ -53,7 +58,7 @@ where
     T: Table,
 {
     #[inline]
-    fn get(&self) -> Result<T::Row, ReadError> {
+    fn bytes(&self) -> Vec<u8> {
         let nullptr: *mut c_void = null_mut() as *mut _ as *mut c_void;
         let size = unsafe { db_get_i64(self.value, nullptr, 0) };
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -63,8 +68,7 @@ where
         unsafe {
             db_get_i64(self.value, ptr, size as u32);
         }
-        let mut pos = 0;
-        T::Row::read(&bytes, &mut pos)
+        bytes
     }
 
     #[inline]
@@ -107,6 +111,17 @@ where
                             u128::db_idx_remove(itr);
                         }
                     }
+                    SecondaryKey::H256(v) => {
+                        let end = <[u128; 2]>::db_idx_end(
+                            self.code, self.scope, table,
+                        );
+                        let itr = v.clone().db_idx_find_primary(
+                            self.code, self.scope, table, pk,
+                        );
+                        if itr != end {
+                            <[u128; 2]>::db_idx_remove(itr);
+                        }
+                    }
                 }
             }
         }
@@ -114,17 +129,22 @@ where
     }
 
     #[inline]
-    fn modify(
+    fn modify<I: Borrow<T::Row>>(
         &self,
-        payer: Option<AccountName>,
-        item: &T::Row,
+        payer: Payer,
+        item: I,
     ) -> Result<usize, WriteError> {
+        let item = item.borrow();
         let size = item.num_bytes();
         let mut bytes = vec![0_u8; size];
         let mut pos = 0;
         item.write(&mut bytes, &mut pos)?;
         let bytes_ptr: *const c_void = &bytes[..] as *const _ as *const c_void;
-        let payer = payer.unwrap_or_else(|| AccountName::new(0));
+        let payer = if let Payer::New(payer) = payer {
+            payer
+        } else {
+            AccountName::new(0)
+        };
         #[allow(clippy::cast_possible_truncation)]
         unsafe {
             db_update_i64(self.value, payer.as_u64(), bytes_ptr, pos as u32)
@@ -145,6 +165,9 @@ where
                     SecondaryKey::U128(v) => {
                         v.db_idx_upsert(self.code, self.scope, table, payer, pk)
                     }
+                    SecondaryKey::H256(v) => {
+                        v.db_idx_upsert(self.code, self.scope, table, payer, pk)
+                    }
                 };
             }
         }
@@ -157,8 +180,9 @@ impl<'a, T> IntoIterator for PrimaryTableCursor<T>
 where
     T: Table,
 {
-    type Item = Self;
     type IntoIter = PrimaryTableIterator<T>;
+    type Item = Self;
+
     #[must_use]
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -198,6 +222,7 @@ where
     T: Table,
 {
     type Item = PrimaryTableCursor<T>;
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.value == self.end {
@@ -311,11 +336,12 @@ where
     }
 
     #[inline]
-    fn emplace(
+    fn emplace<I: Borrow<T::Row>>(
         &self,
         payer: AccountName,
-        item: &T::Row,
+        item: I,
     ) -> Result<(), WriteError> {
+        let item = item.borrow();
         let id = T::primary_key(item);
         let size = item.num_bytes();
         let mut bytes = vec![0_u8; size];
@@ -348,15 +374,49 @@ where
                     SecondaryKey::U128(v) => {
                         v.db_idx_store(self.scope, table, payer, id)
                     }
+                    SecondaryKey::H256(v) => {
+                        v.db_idx_store(self.scope, table, payer, id)
+                    }
                 };
             }
         }
 
         Ok(())
     }
+
+    /// Returns a cursor pointing to a row with the specified primary key, if it
+    /// exists
+    #[inline]
+    fn find<Id>(&'a self, id: Id) -> Option<PrimaryTableCursor<T>>
+    where
+        Id: Into<u64>,
+    {
+        let code = self.code();
+        let scope = self.scope();
+        let itr = unsafe {
+            db_find_i64(
+                code.as_u64(),
+                scope.as_u64(),
+                T::NAME.as_u64(),
+                id.into(),
+            )
+        };
+        let end = self.end();
+        if itr == end {
+            None
+        } else {
+            Some(PrimaryTableCursor {
+                value: itr,
+                code,
+                scope,
+                data: PhantomData,
+            })
+        }
+    }
 }
 
-/// Trait for functions of a `PrimaryTableIndex` that only apply within a smart contract
+/// Trait for functions of a `PrimaryTableIndex` that only apply within a smart
+/// contract
 pub trait PrimaryTableIndexExt<'a, T>:
     TableIndex<'a, u64, T, Cursor = PrimaryTableCursor<T>>
 where
@@ -389,15 +449,6 @@ where
         self.iter().count()
     }
 
-    /// Returns true if the table contains a row with the specified primary key
-    #[inline]
-    fn exists<Id>(&'a self, id: Id) -> bool
-    where
-        Id: Into<u64>,
-    {
-        self.find(id).is_some()
-    }
-
     /// Returns the last row in the table
     #[inline]
     fn end(&'a self) -> i32 {
@@ -407,35 +458,6 @@ where
                 self.scope().as_u64(),
                 T::NAME.as_u64(),
             )
-        }
-    }
-
-    /// Returns a cursor pointing to a row with the specified primary key, if it exists
-    #[inline]
-    fn find<Id>(&'a self, id: Id) -> Option<PrimaryTableCursor<T>>
-    where
-        Id: Into<u64>,
-    {
-        let code = self.code();
-        let scope = self.scope();
-        let itr = unsafe {
-            db_find_i64(
-                code.as_u64(),
-                scope.as_u64(),
-                T::NAME.as_u64(),
-                id.into(),
-            )
-        };
-        let end = self.end();
-        if itr == end {
-            None
-        } else {
-            Some(PrimaryTableCursor {
-                value: itr,
-                code,
-                scope,
-                data: PhantomData,
-            })
         }
     }
 

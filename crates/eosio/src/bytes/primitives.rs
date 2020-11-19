@@ -1,6 +1,6 @@
 use super::{NumBytes, Read, ReadError, Write, WriteError};
 use crate::varint::{SignedInt, UnsignedInt};
-use core::convert::Into;
+use core::convert::TryInto;
 
 macro_rules! impl_nums {
     ($($t:ty, $s:expr)*) => ($(
@@ -13,6 +13,7 @@ macro_rules! impl_nums {
             }
         }
 
+        #[allow(clippy::use_self)]
         impl Read for $t {
             #[inline]
             fn read(bytes: &[u8], pos: &mut usize) -> Result<Self, ReadError> {
@@ -33,6 +34,7 @@ macro_rules! impl_nums {
             }
         }
 
+        #[allow(clippy::use_self)]
         impl Write for $t
         {
             #[inline]
@@ -42,16 +44,17 @@ macro_rules! impl_nums {
 
                 for i in 0..width {
                     // TODO rework this to dynamically allocate?
+                    // std::println!("!!! width: {}, pos: {}, bytes len: {}", width, pos, bytes.len());
                     match bytes.get_mut(*pos) {
                         Some(byte) => {
                             let shift = <Self as From<u8>>::from(i as u8).saturating_mul(<Self as From<u8>>::from(8_u8));
                             // TODO when try_into is stablized:
-                            // let result = ((*self >> shift) & ff).try_into();
-                            // match result {
-                            //     Ok(b) => *byte = b,
-                            //     Err(_) => return Err(WriteError::TryFromIntError),
-                            // }
-                            *byte = ((*self >> shift) & ff) as u8;
+                            let result = ((*self >> shift) & ff).try_into();
+                            match result {
+                                Ok(b) => *byte = b,
+                                Err(_) => return Err(WriteError::TryFromIntError),
+                            }
+                            // *byte = ((*self >> shift) & ff) as u8;
                         }
                         None => return Err(WriteError::NotEnoughSpace),
                     }
@@ -194,7 +197,7 @@ impl NumBytes for usize {
 impl Read for usize {
     #[inline]
     fn read(bytes: &[u8], pos: &mut usize) -> Result<Self, ReadError> {
-        UnsignedInt::read(bytes, pos).map(Into::into)
+        UnsignedInt::read(bytes, pos).map(Self::from)
     }
 }
 
@@ -220,7 +223,7 @@ impl NumBytes for isize {
 impl Read for isize {
     #[inline]
     fn read(bytes: &[u8], pos: &mut usize) -> Result<Self, ReadError> {
-        SignedInt::read(bytes, pos).map(Into::into)
+        SignedInt::read(bytes, pos).map(Self::from)
     }
 }
 

@@ -1,16 +1,16 @@
 use super::Asset;
-use crate::account::AccountName;
-use crate::bytes::{NumBytes, Read, Write};
-use core::fmt;
-use core::ops::Deref;
+use crate::{
+    account::AccountName,
+    bytes::{NumBytes, Read, Write},
+};
+use core::{fmt, ops::Deref};
 
 /// Extended asset which stores the information of the owner of the asset
 /// <https://github.com/EOSIO/eosio.cdt/blob/4985359a30da1f883418b7133593f835927b8046/libraries/eosiolib/core/eosio/asset.hpp#L371-L481>
 #[derive(
     Debug, PartialEq, PartialOrd, Clone, Copy, Default, NumBytes, Read, Write,
 )]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[__eosio_path = "crate::bytes"]
+#[eosio(crate_path = "crate::bytes")]
 pub struct ExtendedAsset {
     /// The asset
     pub quantity: Asset,
@@ -117,7 +117,7 @@ impl fmt::Display for ExtendedAsset {
 
 #[cfg(test)]
 mod extended_asset_tests {
-    use super::*;
+    use super::{Asset, ExtendedAsset};
     use alloc::string::ToString;
     use eosio_macros::{n, s};
 
@@ -140,32 +140,32 @@ mod extended_asset_tests {
     test_to_string! {
         to_string,
         1_0000,
-        s!(4, EOS),
-        n!(eosio.token),
+        s!(4, "EOS"),
+        n!("eosio.token"),
         "1.0000 EOS @ eosio.token"
 
         to_string_signed,
         -1_0000,
-        s!(4, EOS),
-        n!(eosio.token),
+        s!(4, "EOS"),
+        n!("eosio.token"),
         "-1.0000 EOS @ eosio.token"
 
         to_string_decimal,
         1_0001,
-        s!(4, EOS),
-        n!(eosio.token),
+        s!(4, "EOS"),
+        n!("eosio.token"),
         "1.0001 EOS @ eosio.token"
 
         to_string_zero_precision,
         10_001,
-        s!(0, EOS),
-        n!(eosio.token),
+        s!(0, "EOS"),
+        n!("eosio.token"),
         "10001 EOS @ eosio.token"
 
         to_string_zero_precision_signed,
         -10_001,
-        s!(0, EOS),
-        n!(eosio.token),
+        s!(0, "EOS"),
+        n!("eosio.token"),
         "-10001 EOS @ eosio.token"
     }
 }

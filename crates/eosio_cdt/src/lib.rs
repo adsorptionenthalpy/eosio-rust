@@ -16,7 +16,6 @@
     clippy::nursery,
     clippy::style,
     clippy::perf,
-    clippy::cargo,
     clippy::dbg_macro,
     clippy::else_if_without_else,
     clippy::float_cmp_const,
@@ -28,9 +27,6 @@
 
 #[macro_use]
 extern crate alloc;
-
-#[macro_use]
-mod abi;
 
 mod account;
 pub use self::account::*;
@@ -54,7 +50,9 @@ pub use self::print::*;
 mod privileged;
 pub use self::privileged::*;
 
-// mod singleton_index;
+mod singleton_index;
+pub use self::singleton_index::*;
+
 mod table;
 pub use self::table::*;
 
@@ -66,6 +64,8 @@ pub use self::table_secondary::*;
 
 mod time;
 pub use self::time::*;
+
+pub use eosio_cdt_sys as sys;
 
 // pub use self::{
 //     account::*, action::*, check::*, crypto::*, permissions::*, print::*,
